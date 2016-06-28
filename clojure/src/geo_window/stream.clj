@@ -29,7 +29,7 @@
 
 (def default-props
   (doto (Properties.)
-    (.put StreamsConfig/APPLICATION_ID_CONFIG "twitter-users2")
+    (.put StreamsConfig/APPLICATION_ID_CONFIG "twitter-users")
     (.put StreamsConfig/BOOTSTRAP_SERVERS_CONFIG "localhost:9092")
     (.put StreamsConfig/ZOOKEEPER_CONNECT_CONFIG "localhost:2181")
     (.put StreamsConfig/TIMESTAMP_EXTRACTOR_CLASS_CONFIG twitter_timestamp)
@@ -95,8 +95,10 @@
         hexbinned (-> geo-only (.map (add-hexbin-key (double 1/240) [0.0 0.0])))
         counts (-> hexbinned
                    (.filterNot (pred [k v] (nil? k)))
-                   (.countByKey (Serdes/String) "Tweets2"))
-        _ (.to counts (Serdes/String) (Serdes/Long) topic-out)
+                   (.countByKey (TimeWindows/of "TweetWindow" (* 60 60 1000)) (Serdes/String)))
+        counts-display (-> counts
+                           (.toStream (kv-mapper [k _] (format "%d,%s" (.start (.window k)) (.key k)))))
+        _ (.to counts-display (Serdes/String) (Serdes/Long) topic-out)
         ; _ (.to raw-tweets (Serdes/String) json-serde topic-out)
         streams (KafkaStreams. builder default-props)]
     (.start streams)
