@@ -25,11 +25,12 @@
    [java.util Properties]
    [geo_window twitter_timestamp])
   (:require [clojure.data.json :as json]
-            [geo-window.hexbin :as hexbin]))
+            [geo-window.hexbin :as hexbin]
+            [clojure.tools.logging :as log]))
 
-(def default-props
+(defn default-props [serial-num]
   (doto (Properties.)
-    (.put StreamsConfig/APPLICATION_ID_CONFIG "twitter-users")
+    (.put StreamsConfig/APPLICATION_ID_CONFIG (str "twitter-users-" serial-num))
     (.put StreamsConfig/BOOTSTRAP_SERVERS_CONFIG "localhost:9092")
     (.put StreamsConfig/ZOOKEEPER_CONNECT_CONFIG "localhost:2181")
     (.put StreamsConfig/TIMESTAMP_EXTRACTOR_CLASS_CONFIG twitter_timestamp)
@@ -51,6 +52,23 @@
      (apply [this ~@args]
        ~@body)))
 
+(def event-counters (atom {:deserialize 0 :null 0 :empty 0 :exception 0}))
+
+(defn reset-counters []
+  (swap! event-counters (constantly {:deserialize 0 :null 0 :empty 0 :exception 0})))
+
+(defn display-counters []
+  (let [{:keys [deserialize null empty exception]} @event-counters]
+    (println (format "Deserialized %d objects" deserialize))
+    (println (format "%d null objects received" null))
+    (println (format "%d empty objects received" empty))
+    (println (format "%d deserialization exceptions" exception))))
+
+(defn inc-counter
+  "Increment the event counter specified by key"
+  [key]
+  (swap! event-counters update key inc))
+
 (defn trace-deser
   []
   (let [deser (JsonDeserializer.)]
@@ -59,13 +77,18 @@
       (configure [this configs isKey]
         (.configure deser configs isKey))
       (deserialize [this topic data]
-        (when data
+        (inc-counter :deserialize)
+        (if (and data (pos? (alength data)))
           (try
             (.deserialize deser topic data)
             (catch Exception e
-              (binding [*out* *err*]
-                (println "Exception:" e)
-                (println "deser data:" (String. data "UTF-8")))))))
+              (inc-counter :exception)
+              (log/warnf e "Deserialization exception at row %d. String to deserialize was:\n%s"
+                         (:deserialize event-counters)
+                         (String. data "UTF-8"))))
+          (do
+            (inc-counter (if data :empty :nil))
+            nil)))
       (close [this]
         (.close deser)))))
 
@@ -86,21 +109,24 @@
 (defn stream
   "Testing streams from my twitter topic"
   [topic-in topic-out]
-  (let [builder (KStreamBuilder.)
+  (reset-counters)
+  (let [serial-num (.getTime (java.util.Date.))
+        builder (KStreamBuilder.)
         json-serde (Serdes/serdeFrom (JsonSerializer.) (trace-deser))
         raw-tweets (.stream builder (Serdes/String) json-serde (into-array String [topic-in]))
         geo-only (-> raw-tweets (.filterNot (pred [k v]
                                         ; (binding [*out* *err*] (println "filter" (.get v "geo")))
-                                                  (when v (-> v (.get "geo") .isNull)))))
+                                                  (or (nil? v) (-> v (.get "geo") .isNull)))))
         hexbinned (-> geo-only (.map (add-hexbin-key (double 1/240) [0.0 0.0])))
         counts (-> hexbinned
                    (.filterNot (pred [k v] (nil? k)))
-                   (.countByKey (TimeWindows/of "TweetWindow" (* 60 60 1000)) (Serdes/String)))
+                   (.countByKey (TimeWindows/of (str "TweetWindow-" serial-num) (* 60 60 1000)) (Serdes/String)))
         counts-display (-> counts
                            (.toStream (kv-mapper [k _] (format "%d,%s" (.start (.window k)) (.key k)))))
         _ (.to counts-display (Serdes/String) (Serdes/Long) topic-out)
         ; _ (.to raw-tweets (Serdes/String) json-serde topic-out)
-        streams (KafkaStreams. builder default-props)]
+        streams (KafkaStreams. builder (default-props serial-num))]
     (.start streams)
     (Thread/sleep 50000)
-    (.close streams)))
+    (.close streams)
+    (display-counters)))
