@@ -1,11 +1,12 @@
 /clojure/target
 /clojure/classes
 /checkouts
-pom.xml
-pom.xml.asc
 *.jar
 *.class
 /clojure/.lein-*
 /clojure/.nrepl-port
+/java/target
+/java/.idea
+/java/geo-windowj.iml
 .hgignore
 .hg/
