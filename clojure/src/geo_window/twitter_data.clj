@@ -8,13 +8,15 @@
    [clojure.data.json :as json]
    [http.async.client :as ac]
    [twitter.callbacks :as cb]
-   [clojure.string :as str])
+   [clojure.string :as str]
+   [clojure.tools.logging :as log])
   (:import [twitter.callbacks.protocols AsyncStreamingCallback]
            (kafka.consumer Consumer ConsumerConfig KafkaStream)
            (kafka.producer KeyedMessage ProducerConfig)
            (kafka.javaapi.producer Producer)
            (java.util Properties)
-           (java.util.concurrent Executors)))
+           (java.util.concurrent Executors)
+           [java.util Date]))
 
 ;;; Kafka producer for tweets
 
@@ -105,12 +107,47 @@
     (AsyncStreamingCallback. cb ; (comp println #(:text %) json/read-json #(str %2))
                              (comp println response-return-everything)
                              exception-print)))
+
+;;; Code to cancel and restart the feed if we don't hear from it for a number of seconds
+
+(defn current-millis
+  []
+  (.getTime (Date.)))
+
+(defn resilient-status
+  [params creds callback]
+  (let [last-update (atom (current-millis))
+        running (atom true)
+        wrapped-callback (AsyncStreamingCallback.
+                          (fn [& args]
+                            (swap! last-update (fn [_] (current-millis)))
+                            (apply (:on-bodypart callback) args))
+                          (:on-failure callback)
+                          (:on-exception callback))
+        action (atom (statuses-filter :params params :oauth-creds creds :callbacks wrapped-callback))
+        cancel-fn (fn []
+                    (swap! running (constantly false))
+                    ((:cancel (meta @action))))
+        restart-thread (Thread. (fn []
+                                  (while @running
+                                    (when (> (- (current-millis) @last-update) (* 60 1000))
+                                      ((:cancel (meta @action)))
+                                      (swap! action (fn [_] (statuses-filter :params params :oauth-creds creds
+                                                                             :callbacks wrapped-callback)))
+                                      (log/warn "Restarting twitter status stream"))
+                                    (Thread/sleep (* 30 1000)))))]
+    (.start restart-thread)
+    {:cancel cancel-fn :restart-thread restart-thread :running running :last-update last-update
+     :action action}))
+
+(defn cancel
+  [action]
+  ((:cancel action)))
+
 (defn warriors []
   (statuses-filter :params {:track "Warriors"}
                    :oauth-creds my-creds
                    :callbacks text-print-callback))
 
 (defn sf-tweets []
-  (statuses-filter :params {:locations "-122.75,36.8,-121.75,37.8"}
-                   :oauth-creds my-creds
-                   :callbacks tweet-producer-callback))
+  (resilient-status {:locations "-122.55,37.7040,-122.3549,37.8324"} my-creds tweet-producer-callback))
