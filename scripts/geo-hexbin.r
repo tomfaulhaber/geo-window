@@ -8,7 +8,7 @@ input.file <- "/tmp/counts"
 san.francisco <- list(left=-122.55, right=-122.3549, bottom=37.7040, top=37.8324)
 
 load.counts <- function(input.file) {
-  raw.counts <- read.csv(input.file, header=F, col.names = c("ts", "lon", "lat", "count"))
+  raw.counts <- read.table(input.file, col.names = c("ts", "lon", "lat", "count"))
   counts <- raw.counts %>%
     mutate(time=as.POSIXct(ts/1000, origin="1970-01-01", 
                            timezone="America/Los_Angeles")) %>%

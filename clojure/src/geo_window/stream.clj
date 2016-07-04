@@ -103,7 +103,7 @@
              lat (-> coords (.get 0) .doubleValue)
              lon (-> coords (.get 1) .doubleValue)
              [h-lon h-lat] (hb [lon lat])]
-         (KeyValue. (format "%f,%f" h-lon h-lat) v))
+         (KeyValue. (format "%f %f" h-lon h-lat) v))
        (KeyValue. k v)))))
 
 (defn stream
@@ -122,7 +122,7 @@
                    (.filterNot (pred [k v] (nil? k)))
                    (.countByKey (TimeWindows/of (str "TweetWindow-" serial-num) (* 60 60 1000)) (Serdes/String)))
         counts-display (-> counts
-                           (.toStream (kv-mapper [k _] (format "%d,%s" (.start (.window k)) (.key k)))))
+                           (.toStream (kv-mapper [k _] (format "%d %s" (.start (.window k)) (.key k)))))
         _ (.to counts-display (Serdes/String) (Serdes/Long) topic-out)
         ; _ (.to raw-tweets (Serdes/String) json-serde topic-out)
         streams (KafkaStreams. builder (default-props serial-num))]
