@@ -44,15 +44,10 @@ map.df <- function(df, zoom=10) {
   datapoly <- merge(df, hexagons, by=c("id"))
   map <- get_stamenmap(df.bb, zoom = zoom, maptype = "terrain-background")
   p <- ggmap(map) + 
-#    geom_point(aes(x=lon, y=lat, color = count), 
-#                data=df, size=9) +
     geom_polygon(aes(x=x, y=y, fill=count, alpha=count, 
                      group=id, frame=strftime(time, "%B %d %H:%M")), 
                  data=datapoly, color="white") +
     theme(axis.title=element_blank()) +
-#     scale_fill_distiller(palette = "Blues", direction=1, limits=c(0,50)) +
-#     scale_alpha_continuous(range=c(0.1,1), limits=c(0,50))
-#    scale_fill_distiller(palette = "Blues", direction=1, trans="log") +
     scale_fill_gradient(low="#9ECAE1", high="#08519C", trans="log") +
     scale_alpha_continuous(range=c(0.6,1), trans="log") +
     guides(fill=FALSE, alpha=FALSE)
