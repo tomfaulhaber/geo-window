@@ -23,6 +23,11 @@ filter.rect <- function(df, r) {
   df %>% filter(lon >= r$left & lat >= r$bottom & lon <= r$right & lat <= r$top)
 }
 
+filter.time <- function(df, start, end) {
+  df %>% filter(time >= as.POSIXct(start, timezone="America/Los_Angeles")
+                & time < as.POSIXct(end, timezone="America/Los_Angeles"))
+}
+
 angles <- 0:5*(pi/3)
 
 hexagon <- function(r, x, y, id) {
