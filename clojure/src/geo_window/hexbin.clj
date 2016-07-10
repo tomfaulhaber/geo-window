@@ -28,7 +28,7 @@
                   py2 (- py pj2)]
               (if (> (+ (* px1 px1) (* py1 py1))
                      (+ (* px2 px2) (* py2 py2)))
-                (let [pi (+ pi2 (/ (if (bit-and pj 1) 1 -1) 2.0))
+                (let [pi (+ pi2 (/ (if (zero? (bit-and pj 1)) -1 1) 2.0))
                       pj pj2]
                   (point pi pj dx dy))
                 (point pi pj dx dy)))
