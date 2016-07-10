@@ -65,9 +65,9 @@ public class Stream {
                 .filterNot((k,v) -> v == null || v.get("geo").isNull())
                 .map((k,v) -> {
                     JsonNode coords = v.get("geo").get("coordinates");
-                    double[] bin = hexbin.bin(coords.get(0).doubleValue(),
-                                              coords.get(1).doubleValue());
-                    return KeyValue.pair(String.format("%f %f", bin[1], bin[0]), v);
+                    double[] bin = hexbin.bin(coords.get(1).doubleValue(),
+                                              coords.get(0).doubleValue());
+                    return KeyValue.pair(String.format("%f %f", bin[0], bin[1]), v);
                 })
                 .countByKey(TimeWindows.of("tweet-window", 60*60*1000), stringSerde)
                 .toStream((k, v) -> String.format("%d %s", k.window().start(), k.key()))
