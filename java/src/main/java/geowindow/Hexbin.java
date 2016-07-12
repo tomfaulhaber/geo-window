@@ -19,10 +19,6 @@ public class Hexbin {
         this.dy = 1.5 * radius;
     }
 
-    private double[] point(double pi, double pj, double dx, double dy) {
-        return new double[] { (pi + ( (int)pj & 1) / 2.0) * dx, pj * dy };
-    }
-
     public double[] bin(double x, double y) {
         double py = y/dy;
         double pj = Math.round(py);
@@ -42,6 +38,9 @@ public class Hexbin {
                 pj = pj2;
             }
         }
-        return point(pi, pj, dx, dy);
+        return new double[] {
+                (pi + ( (int)pj & 1) / 2.0) * dx,
+                pj * dy
+        };
     }
 }
