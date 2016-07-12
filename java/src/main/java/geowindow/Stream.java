@@ -60,17 +60,25 @@ public class Stream {
         Hexbin hexbin = new Hexbin(1.0/240.0);
         KStreamBuilder builder = new KStreamBuilder();
 
+        // The beginning of the stream pipeline is the raw JSON tweets being loaded from Twitter
         KStream<String,JsonNode> tweets = builder.stream(stringSerde, jsonSerde, topicIn);
         tweets
+                // 1. Filter out any messages that failed to parse or have no location
                 .filterNot((k,v) -> v == null || v.get("geo").isNull())
+                // 2. Add the (lon,lat) of the center of the hexagon as the new key
                 .map((k,v) -> {
                     JsonNode coords = v.get("geo").get("coordinates");
                     double[] bin = hexbin.bin(coords.get(1).doubleValue(),
                                               coords.get(0).doubleValue());
                     return KeyValue.pair(String.format("%f %f", bin[0], bin[1]), v);
                 })
+                // 3. Count by the hour & hexagon, using Kafka Streams built-in time
+                //    windowing
                 .countByKey(TimeWindows.of("tweet-window", 60*60*1000), stringSerde)
+                // 4. Convert the KTable back to a stream with a flattened key that can
+                //    be consumed as text
                 .toStream((k, v) -> String.format("%d %s", k.window().start(), k.key()))
+                // 5. Send the stream to the output topic
                 .to(stringSerde, longSerde, topicOut);
 
         KafkaStreams run = new KafkaStreams(builder, streamsConfiguration);
